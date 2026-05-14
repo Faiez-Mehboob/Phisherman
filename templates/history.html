@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Analysis History</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+  <div class="container py-5">
+    <a href="{{ url_for('index') }}" class="btn btn-sm btn-link mb-3">&larr; Back to Analyzer</a>
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h3 class="card-title">Analysis History</h3>
+
+        {% if rows %}
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Time (UTC)</th>
+                <th>Subject</th>
+                <th>From</th>
+                <th>Verdict</th>
+                <th>Score</th>
+                <th>PDF</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in rows %}
+              <tr>
+                <td><strong>{{ r['id'] }}</strong></td>
+                <td>{{ r['timestamp'] }}</td>
+                <td>{{ r['subject']|truncate(40) }}</td>
+                <td>{{ r['sender']|truncate(30) }}</td>
+                <td>
+                  {% if r['verdict'] == 'PHISHING' %}
+                  <span class="badge bg-danger">{{ r['verdict'] }}</span>
+                  {% elif r['verdict'] == 'SUSPICIOUS' %}
+                  <span class="badge bg-warning">{{ r['verdict'] }}</span>
+                  {% else %}
+                  <span class="badge bg-success">{{ r['verdict'] }}</span>
+                  {% endif %}
+                </td>
+                <td>{{ r['score']|round(2) }}</td>
+                <td><a class="btn btn-sm btn-outline-primary"
+                    href="{{ url_for('download_pdf', record_id=r['id']) }}">Download</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No records yet. Start by analyzing an email!</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

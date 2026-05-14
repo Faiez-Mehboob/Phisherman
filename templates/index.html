@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Phisherman</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+  <style>
+    /* Custom styling for the loading modal */
+    #loadingModal {
+      display: none;
+      position: fixed;
+      z-index: 1050;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      overflow: auto;
+      background-color: rgba(0, 0, 0, 0.7); /* Darker overlay */
+    }
+
+    .modal-content-custom {
+      background-color: #fff;
+      margin: 10% auto; /* Move slightly higher */
+      padding: 40px;
+      border-radius: 16px;
+      width: 90%;
+      max-width: 600px;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--primary-blue-light);
+    }
+
+    .spinner-border {
+      width: 3.5rem;
+      height: 3.5rem;
+      border-width: 0.35em;
+      color: var(--primary-blue); /* Use the primary color */
+    }
+
+    .progress-list {
+      list-style-type: none;
+      padding: 0;
+      margin-top: 25px;
+      text-align: left;
+    }
+
+    .progress-list li {
+      padding: 8px 0;
+      font-size: 1rem;
+      color: #6c757d;
+      transition: all 0.5s ease;
+      display: flex;
+      align-items: center;
+      opacity: 0.7;
+      border-bottom: 1px dashed #eee;
+    }
+
+    .progress-list li:last-child {
+      border-bottom: none;
+    }
+
+    .progress-list li.active {
+      font-weight: 600;
+      color: #000;
+      opacity: 1;
+    }
+
+    /* FIX APPLIED: Removed 'animation: pulse 1s infinite alternate;' to prevent item resizing */
+    .progress-list li.active::before {
+      content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230891b2' width='20px' height='20px'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1.92 14.58L6.42 12.83l1.41-1.41 2.25 2.25 4.8-4.8 1.41 1.41-6.21 6.21z'/%3E%3C/svg%3E");
+      margin-right: 10px;
+    }
+
+    .progress-list li:not(.active)::before {
+      content: '•';
+      margin-right: 10px;
+      font-size: 1.5rem;
+      color: #ccc;
+      line-height: 1;
+    }
+    
+    .loading-title {
+        color: var(--primary-blue-dark);
+        font-weight: 700;
+        letter-spacing: 0.5px;
+    }
+
+    /* FIX APPLIED: Removed @keyframes pulse entirely as it is no longer used */
+  </style>
+</head>
+
+<body class="bg-light">
+  <div class="container py-5">
+    <div class="app-header mb-4">
+      <div class="d-flex justify-content-between align-items-center flex-wrap">
+        <div class="mb-3 mb-md-0">
+          <h1 class="app-title mb-2">Phisherman: phishing email analyzer</h1>
+          <p class="text-muted mb-0">Advanced ML-powered phishing detection and forensic analysis</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h3 class="card-title">Analyze Email</h3>
+        <p class="text-muted mb-4">Paste an email (headers + body) or upload a <code>.eml</code> file. The app will
+          analyze content, extract links, run a model and produce a forensic report.</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for cat, msg in messages %}
+        <div class="alert alert-{{cat}} mb-3">{{msg}}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <form id="analysisForm" method="post" enctype="multipart/form-data">
+          <div class="mb-4">
+            <label class="form-label">Upload .eml file (optional)</label>
+            <input class="form-control" type="file" name="eml_file" accept=".eml">
+            <div class="form-text">If you upload an .eml, its headers & body will be parsed automatically.</div>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label">Or paste email text (headers + body)</label>
+            <textarea class="form-control" name="email_text" rows="10"
+              placeholder="Paste full email here (optional)"></textarea>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button id="analyzeButton" class="btn btn-primary" type="submit">Analyze Email</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('history') }}">Analysis History</a>
+          </div>
+        </form>
+
+      </div>
+    </div>
+    <footer class="mt-4 text-muted small text-center">
+      <strong>Tip:</strong> Upload realistic phishing samples to test DKIM/SPF detection and VirusTotal flags.
+    </footer>
+  </div>
+
+  <div id="loadingModal">
+    <div class="modal-content-custom">
+      <h4 class="mb-4 text-center loading-title">Running Deep Forensic Analysis</h4>
+      <div class="d-flex justify-content-center mb-3">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+      </div>
+      <div class="text-center text-muted small mb-3">Please wait. External API processing can take up to 30 seconds.</div>
+      
+      <ul class="progress-list" id="progressList">
+        </ul>
+      <div class="text-center mt-4">
+        <small class="text-danger" id="warningMessage" style="display:none;"></small>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById('analysisForm');
+      const analyzeButton = document.getElementById('analyzeButton');
+      const loadingModal = document.getElementById('loadingModal');
+      const progressList = document.getElementById('progressList');
+      const warningMessage = document.getElementById('warningMessage');
+      let progressInterval = null;
+
+
+      // Messages to cycle through during the loading process
+      const analysisStages = [
+        "1. Parsing email headers and extracting initial data...",
+        "2. Calling ML Model (Hugging Face) for text classification...",
+        "3. Checking SPF/DKIM authentication records...",
+        "4. Analyzing all extracted URLs and checking domain age...",
+        "5. Querying external threat intelligence (VirusTotal API)...",
+        "6. Generating the final comprehensive forensic report..."
+      ];
+
+      // Function to cycle messages
+      function startProgressCycle() {
+        let currentStage = 0;
+        
+        // Setup initial list state
+        progressList.innerHTML = analysisStages.map((msg, index) => 
+          `<li data-stage="${index + 1}">${msg}</li>`
+        ).join('');
+
+        // Clear warning message
+        warningMessage.style.display = 'none';
+        
+        // Function to update the active stage visually
+        const updateStage = () => {
+          document.querySelectorAll('.progress-list li').forEach((li, index) => {
+            li.classList.remove('active');
+            if (index === currentStage) {
+              li.classList.add('active');
+            }
+          });
+          currentStage = (currentStage + 1) % analysisStages.length;
+        };
+
+        // Run the first update immediately
+        updateStage();
+
+        // Cycle through messages every 4 seconds
+        progressInterval = setInterval(updateStage, 4000); 
+
+        // Set a timeout for a warning message if it takes longer than expected
+        setTimeout(() => {
+            if (loadingModal.style.display === 'block') {
+                warningMessage.textContent = "External APIs are running slowly. Please do not close this window.";
+                warningMessage.style.display = 'block';
+            }
+        }, 15000); // Show warning after 15 seconds
+
+      }
+
+      function stopProgressCycle() {
+          if (progressInterval) {
+              clearInterval(progressInterval);
+              progressInterval = null;
+          }
+      }
+
+      form.addEventListener('submit', (event) => {
+        const emlFile = document.querySelector('input[name="eml_file"]').files.length > 0;
+        const emailText = document.querySelector('textarea[name="email_text"]').value.trim();
+
+        if (emlFile || emailText) {
+          // 1. Show the loading screen immediately
+          loadingModal.style.display = 'block';
+
+          // 2. Disable the button to prevent multiple submissions
+          analyzeButton.disabled = true;
+          analyzeButton.textContent = "Analyzing...";
+
+          // 3. Start the message cycling effect
+          startProgressCycle();
+        } else {
+          // Prevent the form from submitting if both fields are empty
+          event.preventDefault();
+          alert("Please upload an .eml file or paste email content to start the analysis.");
+        }
+      });
+      
+      // Stop the cycle if the user navigates back (handles back button/history)
+      window.addEventListener('pageshow', (event) => {
+          if (event.persisted) {
+              loadingModal.style.display = 'none';
+              analyzeButton.disabled = false;
+              analyzeButton.textContent = "Analyze Email";
+              stopProgressCycle();
+          }
+      });
+    });
+  </script>
+</body>
+
+</html>

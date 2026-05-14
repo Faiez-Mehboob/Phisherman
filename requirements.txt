@@ -1,0 +1,9 @@
+flask
+requests
+beautifulsoup4
+whois
+dnspython
+tldextract
+dkimpy
+python-dotenv
+reportlab

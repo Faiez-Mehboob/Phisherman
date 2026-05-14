@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Analysis Result</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* Custom styles updated for consistency with style.css color palette */
+
+    .stat-card {
+      /* Use the app's standard primary gradient as the default for neutral/general stats */
+      background: var(--gradient-primary);
+      color: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .stat-card.success {
+      /* Green Gradient for Success - using secondary green shades */
+      background: linear-gradient(135deg, var(--secondary-green-light) 0%, var(--secondary-green-dark) 100%);
+    }
+
+    .stat-card.warning {
+      /* Warning Gradient changed from Amber/Yellow to Teal/Blue shades (Medium Risk) */
+      background: linear-gradient(135deg, var(--primary-blue-light) 0%, var(--primary-blue) 100%);
+    }
+
+    .stat-card.danger {
+      /* Danger Gradient changed from Red/Pink to Darker Blue/Green shades (High Risk) */
+      background: linear-gradient(135deg, var(--primary-blue-dark) 0%, var(--secondary-green-dark) 100%);
+    }
+
+    .stat-value {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .stat-label {
+      font-size: 0.9rem;
+      opacity: 0.9;
+      margin-top: 0.5rem;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 300px;
+      margin-bottom: 2rem;
+    }
+
+    .security-indicator {
+      display: flex;
+      align-items: center;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      background: #f8f9fa;
+    }
+
+    .security-indicator.pass {
+      /* Use lighter success color from style.css */
+      background: var(--success-light);
+      border-left: 4px solid var(--success);
+    }
+
+    .security-indicator.fail {
+      /* Using a lighter primary blue shade for visual consistency instead of red/pink */
+      background: var(--primary-blue-light);
+      border-left: 4px solid var(--primary-blue-dark);
+    }
+
+    .security-indicator.neutral {
+      /* Using a lighter green shade for neutral instead of yellow/amber */
+      background: var(--secondary-green-light);
+      border-left: 4px solid var(--secondary-green);
+    }
+
+    .link-risk-badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    /* Override link risk badge colors using the defined status colors (now all green/blue) */
+    .link-risk-badge.bg-danger {
+      background: var(--primary-blue-dark) !important;
+      color: white !important;
+    }
+
+    .link-risk-badge.bg-warning {
+      background: var(--primary-blue) !important;
+      color: white !important;
+    }
+
+    .link-risk-badge.bg-success {
+      background: var(--success) !important;
+      color: white !important;
+    }
+  </style>
+</head>
+
+<body class="bg-light">
+  <div class="container py-5">
+    <a href="{{ url_for('index') }}" class="btn btn-sm btn-link mb-3">&larr; Analyze Another Email</a>
+
+    <div class="card shadow-sm mb-4" style="border: none;">
+      <div class="card-body text-center py-4">
+        <h2 class="app-title mb-3">Phisherman Analysis Report</h2>
+        <div class="verdict-display">
+          <h3 class="mb-0">
+            {% if verdict == "PHISHING" %}
+            <span class="badge bg-danger" style="font-size: 1.5rem; padding: 0.75rem 1.5rem;">🚨 HIGH RISK
+              DETECTED</span>
+            {% elif verdict == "SUSPICIOUS" %}
+            <span class="badge bg-warning" style="font-size: 1.5rem; padding: 0.75rem 1.5rem;">⚠️
+              SUSPICIOUS</span>
+            {% else %}
+            <span class="badge bg-success" style="font-size: 1.5rem; padding: 0.75rem 1.5rem;">✅ LEGITIMATE</span>
+            {% endif %}
+          </h3>
+          <p class="text-muted mt-3 mb-0">Overall Risk Score: <strong>{{ score|round(2) }}</strong></p>
+        </div>
+      </div>
+    </div>
+
+    {% set hf_best = hf_result.best_prediction %}
+    {% set hf_phish_score = hf_result.all_scores | selectattr('label', 'in', ['phishing_url', 'phishing_url_alt']) | map(attribute='score') | sum %}
+
+    <div class="row mb-4">
+      <div class="col-md-4">
+        <div
+          class="stat-card {% if hf_phish_score > 50 %}danger{% elif hf_phish_score > 10 %}warning{% else %}success{% endif %}">
+          <div class="stat-value">{{ hf_best.score|round(1) }}%</div>
+          <div class="stat-label">Primary ML Model Confidence</div>
+          <small style="opacity: 0.8; color: white;">{{ hf_best.label|replace('_', ' ')|title }}</small>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="stat-card warning">
+          <div class="stat-value">{{ urls_info|length }}</div>
+          <div class="stat-label">Links Found</div>
+          <small style="opacity: 0.8; color: white;">
+            {% set risky_links = urls_info|selectattr('score', 'ge', 3)|list|length %}
+            {{ risky_links }} flagged as risky
+          </small>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div
+          class="stat-card {% if spf.get('spf_header') and 'pass' in spf.get('spf_header', '').lower() %}success{% else %}danger{% endif %}">
+          <div class="stat-value">
+            {% if spf.get('spf_header') and 'pass' in spf.get('spf_header', '').lower() %}✓{% else %}✗{% endif %}
+          </div>
+          <div class="stat-label">Email Authentication</div>
+          <small style="opacity: 0.8; color: white;">SPF & DKIM Status</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="row mb-4">
+      <div class="col-md-6">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h6 class="card-title">Risk Score Breakdown</h6>
+            <div class="chart-container">
+              <canvas id="riskChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h6 class="card-title">ML Model Confidence (All Labels)</h6>
+            <div class="chart-container">
+              <canvas id="confidenceChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h5 class="card-title mb-4">📧 Email Header Information</h5>
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <strong class="text-muted d-block mb-1">From</strong>
+            <div class="p-2 bg-light rounded">{{ headers.get('From', 'Not available') }}</div>
+          </div>
+          <div class="col-md-6 mb-3">
+            <strong class="text-muted d-block mb-1">Subject</strong>
+            <div class="p-2 bg-light rounded">{{ headers.get('Subject', 'Not available') }}</div>
+          </div>
+          <div class="col-md-6 mb-3">
+            <strong class="text-muted d-block mb-1">Date</strong>
+            <div class="p-2 bg-light rounded">{{ headers.get('Date', 'Not available') }}</div>
+          </div>
+          <div class="col-md-6 mb-3">
+            <strong class="text-muted d-block mb-1">To</strong>
+            <div class="p-2 bg-light rounded">{{ headers.get('To', 'Not available') }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h5 class="card-title mb-4">🔐 Email Authentication Analysis</h5>
+
+        <div
+          class="security-indicator {% if spf.get('spf_header') and 'pass' in spf.get('spf_header', '').lower() %}pass{% elif spf.get('spf_header') %}fail{% else %}neutral{% endif %}">
+          <div class="flex-grow-1">
+            <strong>SPF (Sender Policy Framework)</strong>
+            <div class="text-muted small mt-1">{{ spf.get('spf_header') or 'Not present' }}</div>
+          </div>
+          <div>
+            {% if spf.get('spf_header') and 'pass' in spf.get('spf_header', '').lower() %}
+            <span class="badge bg-success">PASS</span>
+            {% elif spf.get('spf_header') %}
+            <span class="badge bg-danger">FAIL</span>
+            {% else %}
+            <span class="badge bg-secondary">N/A</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div
+          class="security-indicator {% if dkim.get('verified') %}pass{% elif dkim.get('dkim_present') %}fail{% else %}neutral{% endif %}">
+          <div class="flex-grow-1">
+            <strong>DKIM (DomainKeys Identified Mail)</strong>
+            <div class="text-muted small mt-1">
+              {% if dkim.get('dkim_present') %}
+              Signature present -
+              {% if dkim.get('verified') %}Verified{% else %}Failed verification{% endif %}
+              {% else %}
+              No DKIM signature found
+              {% endif %}
+            </div>
+          </div>
+          <div>
+            {% if dkim.get('verified') %}
+            <span class="badge bg-success">VERIFIED</span>
+            {% elif dkim.get('dkim_present') %}
+            <span class="badge bg-danger">FAILED</span>
+            {% else %}
+            <span class="badge bg-secondary">N/A</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="security-indicator {% if spf.get('spf_txt_exists') %}pass{% else %}neutral{% endif %}">
+          <div class="flex-grow-1">
+            <strong>SPF TXT Record</strong>
+            <div class="text-muted small mt-1">DNS record check for sender domain</div>
+          </div>
+          <div>
+            {% if spf.get('spf_txt_exists') %}
+            <span class="badge bg-success">PRESENT</span>
+            {% else %}
+            <span class="badge bg-warning">NOT FOUND</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h5 class="card-title mb-4">🔗 Extracted Links Analysis</h5>
+        {% if urls_info %}
+        <p class="mb-3"><strong>Total Links Found:</strong> {{ urls_info|length }}</p>
+
+        <div class="mb-4">
+          <div class="chart-container" style="height: 200px;">
+            <canvas id="linkRiskChart"></canvas>
+          </div>
+        </div>
+
+        <div class="list-group">
+          {% for ui in urls_info %}
+          <div class="list-group-item">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div class="flex-grow-1">
+                <strong>{{ ui.host }}</strong>
+                <br>
+                <a href="{{ ui.url }}" target="_blank" rel="noopener noreferrer" class="text-break small">{{ ui.url
+                  }}</a>
+              </div>
+              <div class="ms-3">
+                <span
+                  class="link-risk-badge {% if ui.score >= 5 %}bg-danger text-white{% elif ui.score >= 3 %}bg-warning text-white{% else %}bg-success text-white{% endif %}">
+                  Risk: {{ ui.score }}
+                </span>
+              </div>
+            </div>
+
+            {% if ui.checks %}
+            <div class="mt-2">
+              <strong class="small">Security Checks:</strong>
+              <ul class="mb-0 mt-1 small">
+                {% for chk in ui.checks %}
+                <li>{{ chk[0]|replace('_', ' ')|title }}: {{ chk[1] }}</li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+
+            {% if ui.vt_domain and not ui.vt_domain.get('error') %}
+            <div class="mt-2 small">
+              <strong>VirusTotal Domain:</strong>
+              {% set s = ui.vt_domain.get('data', {}).get('attributes', {}).get('last_analysis_stats', {}) %}
+              <span class="{% if s.get('malicious', 0) > 0 %}text-danger{% else %}text-success{% endif %}">
+                {{ s.get('malicious', 0) }} malicious, {{ s.get('suspicious', 0) }} suspicious
+              </span>
+            </div>
+            {% endif %}
+
+            {% if ui.vt_url and not ui.vt_url.get('error') %}
+            <div class="mt-2 small">
+              <strong>VirusTotal URL:</strong>
+              {% set s = ui.vt_url.get('data', {}).get('attributes', {}).get('last_analysis_stats', {}) %}
+              <span class="{% if s.get('malicious', 0) > 0 %}text-danger{% else %}text-success{% endif %}">
+                {{ s.get('malicious', 0) }} malicious, {{ s.get('suspicious', 0) }} suspicious
+              </span>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No links detected in the email content.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h5 class="card-title mb-3">📋 Detailed Forensic Summary</h5>
+        <pre
+          style="white-space:pre-wrap; background: #f8f9fa; padding: 1rem; border-radius: 8px; font-size: 0.9rem;">{{ summary }}</pre>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mb-4">
+      <a class="btn btn-primary" href="{{ url_for('download_pdf', record_id=record_id) }}">
+        📄 Download PDF Report
+      </a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('history') }}">
+        📊 View Analysis History
+      </a>
+      <a class="btn btn-outline-primary" href="{{ url_for('index') }}">
+        🔍 Analyze Another Email
+      </a>
+    </div>
+  </div>
+
+  <script>
+    // Define consistent colors for charts based on style.css (using RGBA for consistency with Chart.js)
+    const primaryColor = 'rgba(8, 145, 178, 0.8)'; // Teal Blue (General Risk)
+    const successColor = 'rgba(16, 185, 129, 0.8)'; // Emerald Green (Low Risk)
+    
+    // Redefine danger and warning colors to use the green/blue palette
+    const dangerColor = 'rgba(14, 116, 144, 0.9)'; // Dark Blue/Teal (High Risk - from --primary-blue-dark)
+    const warningColor = 'rgba(6, 182, 212, 0.8)'; // Light Blue/Cyan (Medium Risk - from --primary-blue-light)
+    
+    const whiteColor = '#fff';
+
+    // Data for ML Confidence Chart
+    const mlScores = {{ hf_result.all_scores | tojson }};
+    const mlLabels = mlScores.map(s => s.label.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+    const mlData = mlScores.map(s => s.score);
+    const mlBackgrounds = mlScores.map(s => {
+      // Use Danger for Phishing labels, Success for Legitimate labels
+      if (s.label.includes('phishing')) return dangerColor;
+      if (s.label.includes('legitimate')) return successColor;
+      return primaryColor;
+    });
+
+    // ML Confidence Chart - Now shows all 4 labels as a horizontal bar chart
+    const confCtx = document.getElementById('confidenceChart');
+    if (confCtx) {
+      new Chart(confCtx, {
+        type: 'bar',
+        data: {
+          labels: mlLabels,
+          datasets: [{
+            label: 'Confidence (%)',
+            data: mlData,
+            backgroundColor: mlBackgrounds,
+            borderWidth: 1,
+            borderColor: whiteColor
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: 'y', // Makes it a horizontal bar chart for better label reading
+          scales: {
+            x: {
+              beginAtZero: true,
+              max: 100,
+              ticks: {
+                callback: function (value) {
+                  return value + '%';
+                }
+              }
+            }
+          },
+          plugins: {
+            legend: {
+              display: false
+            }
+          }
+        }
+      });
+    }
+
+
+    // Data for Risk Score Breakdown Chart (Doughnut Chart)
+    {% set link_score = urls_info|sum(attribute='score', start=0) %}
+    
+    // Calculate Authentication Risk Score for Chart
+    {% set auth_score = 0 %}
+    {% if not (spf.get('spf_header') and 'pass' in spf.get('spf_header', '').lower()) %}
+      {% set auth_score = auth_score + 1 %}
+    {% endif %}
+    {% if not dkim.get('verified') %}
+      {% set auth_score = auth_score + 1 %}
+    {% endif %}
+
+    // Simplified ML contribution for visual chart display (using primary phishing score if available)
+    {% set ml_chart_value = hf_phish_score / 10 %} // Scale phishing confidence for chart impact
+
+    const riskCtx = document.getElementById('riskChart');
+    if (riskCtx) {
+      new Chart(riskCtx, {
+        type: 'doughnut',
+        data: {
+          labels: ['ML Model Risk', 'Link Analysis Score', 'Authentication Risk'],
+          datasets: [{
+            data: [{{ ml_chart_value | round(2) }}, {{ link_score | round(2) }}, {{ auth_score | round(2) }}],
+            // Use distinct shades from the approved palette:
+            backgroundColor: [dangerColor, primaryColor, warningColor],
+            borderWidth: 2,
+            borderColor: whiteColor
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom'
+            }
+          }
+        }
+      });
+    }
+
+    {% if urls_info %}
+    // Link Risk Distribution Chart
+    const linkCtx = document.getElementById('linkRiskChart');
+    if (linkCtx) {
+      new Chart(linkCtx, {
+        type: 'bar',
+        data: {
+          labels: [{% for ui in urls_info %}'{{ ui.host[:20] }}'{% if not loop.last %}, {% endif %} {% endfor %}],
+          datasets: [{
+            label: 'Risk Score',
+            data: [{% for ui in urls_info %}{{ ui.score }}{% if not loop.last %}, {% endif %} {% endfor %}],
+            backgroundColor: [
+              // High Risk (5+) = Danger (Dark Teal)
+              // Medium Risk (3+) = Warning (Light Cyan)
+              // Low Risk (<3) = Success (Emerald Green)
+              {% for ui in urls_info %}'{% if ui.score >= 5 %}' + dangerColor + '{% elif ui.score >= 3 %}' + warningColor + '{% else %}' + successColor + '{% endif %}'{% if not loop.last %}, {% endif %} {% endfor %}
+            ],
+            borderWidth: 2,
+            borderColor: whiteColor
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: 'y',
+          scales: {
+            x: {
+              beginAtZero: true
+            }
+          },
+          plugins: {
+            legend: {
+              display: false
+            }
+          }
+        }
+      });
+    }
+    {% endif %}
+  </script>
+</body>
+
+</html>
