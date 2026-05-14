@@ -38,6 +38,7 @@ SUSPICIOUS_TLDS = {'.zip', '.country', '.top', '.work', '.review', '.link', '.xi
 
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024 
 app.secret_key = os.getenv("SECRET_KEY")
 
 
@@ -605,11 +606,17 @@ def index():
     if request.method == "POST":
         eml_file = request.files.get("eml_file")
         pasted = request.form.get("email_text","").strip()
+        if len(pasted) > 50000:
+            flash("Pasted text is too long. Max 50,000 characters.", "warning")
+            return redirect(url_for("index"))
         raw_text = ""
         headers = {}
         raw_bytes = None
 
         if eml_file and eml_file.filename:
+            if not eml_file.filename.lower().endswith(".eml"):
+                flash("Only .eml files are accepted.", "danger")
+                return redirect(url_for("index"))
             parsed = parse_eml(eml_file.stream)
             if parsed.get("error"):
                 flash(parsed["error"], "danger")
@@ -629,7 +636,7 @@ def index():
             flash("No email body detected. Paste text or upload a .eml file.", "warning")
             return redirect(url_for("index"))
 
-        urls = extract_urls(raw_text)
+        urls = extract_urls(raw_text)[:20]
         urls_info = []
         max_link_score = 0
         for u in urls:
@@ -728,4 +735,4 @@ def download_pdf(record_id):
 if __name__ == "__main__":
     with app.app_context():
         init_db()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=os.getenv("FLASK_DEBUG", "false").lower() == "true")
